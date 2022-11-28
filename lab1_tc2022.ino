@@ -4,6 +4,8 @@
 
 #include <Wire.h>
 
+#include <DateTime.h>
+
 #include <ArduinoJson.h>
 
 #define SENSOR_TEMP_PIN 2
@@ -54,8 +56,8 @@ char requestIndex = 0;
 
 void SerializeObject(JsonArray sensors, JsonArray actuators)
 {
-    doc["slave"] = "sklaakdl";
-    doc["date"] = "sklakl";
+    doc["slave"] = "Arduino-nano-1";
+    doc["date"] = DateTime.now();
     doc["actuators"] = actuators;
     doc["sensors"] = sensors;
     serializeJson(doc, json);
@@ -198,36 +200,36 @@ void measureByHumidity(){
       digitalWrite(3, LOW);
       digitalWrite(4, LOW);
       digitalWrite(5, LOW);
-      actuator1["current_state"]="off";
-      actuator2["current_state"]="off";
-      actuator3["current_state"]="off";
+      actuator1["current_value"]=0;
+      actuator2["current_value"]=0;
+      actuator3["current_value"]=0;
     }
     else if ((h>25) and (h<=50)){
       // turn on one led
       digitalWrite(3, HIGH);
       digitalWrite(4, LOW);
       digitalWrite(5, LOW);
-      actuator1["current_state"]="on";
-      actuator2["current_state"]="off";
-      actuator3["current_state"]="off";
+      actuator1["current_value"]=1;
+      actuator2["current_value"]=0;
+      actuator3["current_value"]=0;
     }
     else if ((h>50) and (h<=75)) {
       // turn on two leds
       digitalWrite(3, HIGH);
       digitalWrite(4, HIGH);
       digitalWrite(5, LOW);
-      actuator1["current_state"]="on";
-      actuator2["current_state"]="on";
-      actuator3["current_state"]="off";
+      actuator1["current_value"]=1;
+      actuator2["current_value"]=1;
+      actuator3["current_value"]=0;
     }
     else {
       // turn on all leds
       digitalWrite(3, HIGH);
       digitalWrite(4, HIGH);
       digitalWrite(5, HIGH);
-      actuator1["current_state"]="on";
-      actuator2["current_state"]="on";
-      actuator3["current_state"]="on";
+      actuator1["current_value"]=1;
+      actuator2["current_value"]=1;
+      actuator3["current_value"]=1;
     }
     arrActuators[0] = actuator1;
     arrActuators[1] = actuator2;
