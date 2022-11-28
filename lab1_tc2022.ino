@@ -56,7 +56,7 @@ char requestIndex = 0;
 
 void SerializeObject(JsonArray sensors, JsonArray actuators)
 {
-    doc["slave"] = "Arduino-nano-1";
+    doc["cotroller_name"] = "Arduino-nano-1";
     doc["date"] = DateTime.now();
     doc["actuators"] = actuators;
     doc["sensors"] = sensors;
