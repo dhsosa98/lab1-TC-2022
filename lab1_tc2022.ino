@@ -4,8 +4,6 @@
 
 #include <Wire.h>
 
-#include <DateTime.h>
-
 #include <ArduinoJson.h>
 
 #define SENSOR_TEMP_PIN 2
@@ -23,21 +21,24 @@ int stepsPerInterval = stepsPerRevolution/intervals;
 // Stepper Motor speed
 int motSpeed = 20; 
 // Celcius Degree Temperature Boundaries that the system need to handle
-float minTemp = 15;
-float maxTemp = 30;
+float minTemp = 15.0;
+float maxTemp = 30.0;
 // Degree Angles Boundaries of the temperature adjustment system
 float minAngle = 0;
 float maxAngle = 180;
 String input;
-String selectedRibbon = "ribbon 1";
+String selectedRibbon = "ribbon 2";
+const byte I2C_SLAVE_ADDR = 0x01;
 
-String json;
-DynamicJsonDocument doc(1024);
+const char ASK_FOR_LENGTH = 'L';
+const char ASK_FOR_DATA = 'D';
 
-const byte I2C_SLAVE_ADDR = 0x20;
+char request = ' ';
+char requestIndex = 0;
+String message; 
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
     myStepper.setSpeed(motSpeed);
     pinMode(3, OUTPUT);
     pinMode(4, OUTPUT);
@@ -48,72 +49,76 @@ void setup() {
     dht.begin();
 }
 
-const char ASK_FOR_LENGTH = 'L';
-const char ASK_FOR_DATA = 'D';
-
-char request = ' ';
-char requestIndex = 0;
-
-void SerializeObject(JsonArray sensors, JsonArray actuators)
-{
-    doc["cotroller_name"] = "Arduino-nano-1";
-    doc["date"] = DateTime.now();
-    doc["actuators"] = actuators;
-    doc["sensors"] = sensors;
-    serializeJson(doc, json);
-}
-
 void receiveEvent(int bytes)
 {
-   while (Wire.available())
-   {
-     request = (char)Wire.read();
-   }
+  while (Wire.available())
+  {
+   request = (char)Wire.read();
+  }
 }
+
 void requestEvent()
 {
-   if(request == ASK_FOR_LENGTH)
-   {
-      Wire.write(json.length());
-      char requestIndex = 0;
-   }
-   if(request == ASK_FOR_DATA)
-   {
-      if(requestIndex < (json.length() / 32)) 
-      {
-         Wire.write(json.c_str() + requestIndex * 32, 32);
-         requestIndex ++;
-      }
-      else
-      {
-         Wire.write(json.c_str() + requestIndex * 32, (json.length() % 32));
-         requestIndex = 0;
-      }
-   }
+  if(request == ASK_FOR_LENGTH)
+  {
+    Wire.write(message.length());
+    Serial.println(request);
+    Serial.println(message.length());    
+    char requestIndex = 0;
+  }
+  if(request == ASK_FOR_DATA)
+  {
+    if(requestIndex < (message.length() / 32)) 
+    {
+      Wire.write(message.c_str() + requestIndex * 32, 32);
+      requestIndex ++;
+      Serial.println(requestIndex); 
+    }
+    else
+    {
+      Wire.write(message.c_str() + requestIndex * 32, (message.length() % 32));
+      requestIndex = 0;
+    }
+  }
 }
 
 void loop() {   
+    //Reset the message to Master
+    message="";
+    //Read the Serial input
     input = Serial.readStringUntil('\n');
-    if (input == String("start: ribbon 1")){
+    // Change current control ribbon
+    if (input.equals("start: ribbon 1")){
       selectedRibbon = "ribbon 1";
     }
-    else if (input == String("start: ribbon 2")){
+    else if (input.equals("start: ribbon 2")){
       selectedRibbon = "ribbon 2";
     }
-    
-    if (selectedRibbon == String("ribbon 1")){
+    Serial.println(selectedRibbon);
+    // Handle Ribbons
+    if (selectedRibbon.equals("ribbon 1")){
+      Serial.println("Measuring... ");
       runStepperByTemperature();
-    } else if (selectedRibbon == String("ribbon 2")){
+    } else if (selectedRibbon.equals("ribbon 2")){
+      Serial.println("Measuring... ");
       measureByHumidity();
-    }
+    }     
     delay(500);
 }
 
 void runStepperByTemperature()
-{
-  float t = dht.readTemperature();
+{   
+    // Define the Json Structure
+    StaticJsonDocument<136> doc; 
+    StaticJsonDocument<52> actuator1;
+    StaticJsonDocument<52> sensor1;
+    JsonArray arrActuators = doc.createNestedArray("actuators");
+    JsonArray arrSensors = doc.createNestedArray("sensors");
+
+    // Read the temperature
+    float t = dht.readTemperature();
     if (isnan(t)) {
-        Serial.println("Failed to read from DHT sensor!");
+        Serial.println("Failed to read Temp from DHT sensor!");
         return;
     }
     float tempAngleRatio = maxAngle/(maxTemp - minTemp); //Ratio between Degree Angle by Temperature
@@ -150,19 +155,19 @@ void runStepperByTemperature()
     Serial.println(currentInterval);
     Serial.println("Interval Angle Degrees: ");
     Serial.println(currentInterval*(maxAngle/intervals));
-    StaticJsonDocument<200> actuator1;
-    StaticJsonDocument<200> sensor1;
-    DynamicJsonDocument docActuators(1024);
-    JsonArray arrActuators = docActuators.to<JsonArray>();
-    DynamicJsonDocument docSensors(1024);
-    JsonArray arrSensors = docSensors.to<JsonArray>();
+
+    // Fill the json according to the group interoperability standard
     actuator1["type"]="stepper";
-    actuator1["current_interval"]=currentInterval;
-    sensor1["type"]="temperature";
+    actuator1["current_value"]=currentInterval;
+    sensor1["type"]="temp1";
     sensor1["current_value"]=t;
-    arrActuators[0]=actuator1;
-    arrSensors[0]=sensor1;
-    SerializeObject(arrSensors, arrActuators);
+    arrActuators.add(actuator1);
+    arrSensors.add(sensor1);
+    doc["controller_name"]="Arduino-nano-1";
+
+    // Convert Json to String
+    serializeJson(doc, message);
+    Serial.println(message.length()); 
 }
 
 void pass_right(){
@@ -175,26 +180,24 @@ void pass_left(){
 
 
 void measureByHumidity(){
+  // Define the Json Structure
+  StaticJsonDocument<199> doc;
+  StaticJsonDocument<52> actuator1;
+  StaticJsonDocument<52> actuator2;
+  StaticJsonDocument<52> actuator3;
+  StaticJsonDocument<52> sensor1;
+  JsonArray arrActuators = doc.createNestedArray("actuators");
+  JsonArray arrSensors = doc.createNestedArray("sensors");
+  
   float h = dht.readHumidity();
-  Serial.print("Humidity: ");
-  Serial.print(h);
   if (isnan(h)) {
-     Serial.println("Failed to read from DHT sensor!");
+     Serial.println("Failed to read Humidity from DHT sensor!");
      return;
   }
-  StaticJsonDocument<200> actuator1;
-  StaticJsonDocument<200> actuator2;
-  StaticJsonDocument<200> actuator3;
-  StaticJsonDocument<200> sensor1;
-  DynamicJsonDocument docActuators(1024);
-  JsonArray arrActuators = docActuators.to<JsonArray>();
-  DynamicJsonDocument docSensors(1024);
-  JsonArray arrSensors = docSensors.to<JsonArray>();
-  actuator1["type"]="led";
-  actuator2["type"]="led";
-  actuator3["type"]="led";
-  sensor1["type"]= "humidity";
-  sensor1["current_value"]= h;
+  Serial.print("Humidity: ");
+  Serial.print(h);
+  Serial.println();
+
   if (h<=25){
     // turn off all leds
       digitalWrite(3, LOW);
@@ -231,9 +234,19 @@ void measureByHumidity(){
       actuator2["current_value"]=1;
       actuator3["current_value"]=1;
     }
-    arrActuators[0] = actuator1;
-    arrActuators[1] = actuator2;
-    arrActuators[2] = actuator3; 
-    arrSensors[0] = sensor1;
-    SerializeObject(arrSensors, arrActuators);
+  // Fill the json according to the group interoperability standard
+  actuator1["type"]="led1";
+  actuator2["type"]="led2";
+  actuator3["type"]="led3";
+  sensor1["type"]= "hum1";
+  sensor1["current_value"]= h;
+  arrActuators.add(actuator1);
+  arrActuators.add(actuator2);
+  arrActuators.add(actuator3); 
+  arrSensors.add(sensor1);
+  doc["controller_name"]="Arduino-nano-1";
+  
+  // Convert Json to String
+  serializeJson(doc, message);
+  Serial.println(message.length()); 
 }
